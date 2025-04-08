@@ -334,6 +334,28 @@ def test_net(args, config):
 
     test(base_model, test_dataloader, ChamferDisL1, ChamferDisL2, args, config, logger=logger)
 
+def save_pcd(filename, points):
+    import os
+    import numpy as np
+    import open3d as o3d
+
+    if isinstance(points, torch.Tensor):
+        points = points.detach().cpu().numpy()
+
+    points = np.asarray(points, dtype=np.float64)
+
+    if len(points.shape) == 3 and points.shape[0] == 1:
+        points = points.squeeze(0)
+
+    if points.shape[1] != 3:
+        raise ValueError(f"Expected Nx3 array, but got shape {points.shape}")
+
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
+
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(points)
+    o3d.io.write_point_cloud(filename, pcd, write_ascii=True)
+
 def test(base_model, test_dataloader, ChamferDisL1, ChamferDisL2, args, config, logger = None):
 
     base_model.eval()  # set model to eval mode
@@ -357,6 +379,9 @@ def test(base_model, test_dataloader, ChamferDisL1, ChamferDisL2, args, config, 
                 ret = base_model(partial)
                 coarse_points = ret[0]
                 dense_points = ret[-1]
+
+                filename = os.path.join('results', model_id + '.pcd')
+                save_pcd(filename, dense_points)
 
                 sparse_loss_l1 =  ChamferDisL1(coarse_points, gt)
                 sparse_loss_l2 =  ChamferDisL2(coarse_points, gt)

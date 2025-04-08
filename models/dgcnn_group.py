@@ -1,9 +1,7 @@
 import torch
 from torch import nn
+import torch.nn.functional as F
 from pointnet2_ops import pointnet2_utils
-# from knn_cuda import KNN
-# knn = KNN(k=16, transpose_mode=False)
-
 
 def knn_point(nsample, xyz, new_xyz):
     """
@@ -37,15 +35,12 @@ def square_distance(src, dst):
     dist = -2 * torch.matmul(src, dst.permute(0, 2, 1))
     dist += torch.sum(src ** 2, -1).view(B, N, 1)
     dist += torch.sum(dst ** 2, -1).view(B, 1, M)
-    return dist  
+    return dist
 
 
 class DGCNN_Grouper(nn.Module):
     def __init__(self):
         super().__init__()
-        '''
-        K has to be 16
-        '''
         self.input_trans = nn.Conv1d(3, 8, 1)
 
         self.layer1 = nn.Sequential(nn.Conv2d(16, 32, kernel_size=1, bias=False),
@@ -67,26 +62,7 @@ class DGCNN_Grouper(nn.Module):
                                    nn.GroupNorm(4, 128),
                                    nn.LeakyReLU(negative_slope=0.2)
                                    )
-
     
-    @staticmethod
-    def fps_downsample(coor, x, num_group):
-        xyz = coor.transpose(1, 2).contiguous() # b, n, 3
-        fps_idx = pointnet2_utils.furthest_point_sample(xyz, num_group)
-
-        combined_x = torch.cat([coor, x], dim=1)
-
-        new_combined_x = (
-            pointnet2_utils.gather_operation(
-                combined_x, fps_idx
-            )
-        )
-
-        new_coor = new_combined_x[:, :3]
-        new_x = new_combined_x[:, 3:]
-
-        return new_coor, new_x
-
     @staticmethod
     def get_graph_feature(coor_q, x_q, coor_k, x_k):
 
@@ -113,19 +89,46 @@ class DGCNN_Grouper(nn.Module):
         feature = torch.cat((feature - x_q, x_q), dim=1)
         return feature
 
+    @staticmethod
+    def learnable_sampling(coor, x, num_group, tau=0.5):
+        """
+        Implements learnable sampling using Gumbel Softmax instead of FPS.
+        Args:
+            coor: [B, 3, N] - Input coordinates
+            x: [B, C, N] - Features
+            num_group: int - Number of points to sample
+            tau: float - Temperature parameter for Gumbel Softmax
+        Returns:
+            new_coor: [B, 3, num_group] - Sampled coordinates
+            new_x: [B, C, num_group] - Sampled features
+        """
+        B, C, N = x.shape
+        
+        # Compute sampling logits (importance score for each point)
+        logits = torch.mean(x, dim=1)  # [B, N]
+        
+        # Apply Gumbel Softmax to get sampling probabilities
+        sampling_weights = F.gumbel_softmax(logits, tau=tau, hard=True)  # [B, N]
+        
+        # Sample indices based on Gumbel softmax output
+        sample_idx = torch.topk(sampling_weights, num_group, dim=1)[1]  # [B, num_group]
+
+        # Gather selected points
+        new_coor = torch.gather(coor, dim=2, index=sample_idx.unsqueeze(1).expand(-1, 3, -1))
+        new_x = torch.gather(x, dim=2, index=sample_idx.unsqueeze(1).expand(-1, C, -1))
+
+        return new_coor, new_x
+
     def forward(self, x):
-
-        # x: bs, 3, np
-
-        # bs 3 N(128)   bs C(224)128 N(128)
-        coor = x
-        f = self.input_trans(x)
+        coor = x  # [B, 3, N]
+        f = self.input_trans(x)  # [B, C, N]
 
         f = self.get_graph_feature(coor, f, coor, f)
         f = self.layer1(f)
         f = f.max(dim=-1, keepdim=False)[0]
 
-        coor_q, f_q = self.fps_downsample(coor, f, 512)
+        # Use Learnable Sampling (Gumbel Softmax) instead of FPS
+        coor_q, f_q = self.learnable_sampling(coor, f, 512)
         f = self.get_graph_feature(coor_q, f_q, coor, f)
         f = self.layer2(f)
         f = f.max(dim=-1, keepdim=False)[0]
@@ -135,7 +138,8 @@ class DGCNN_Grouper(nn.Module):
         f = self.layer3(f)
         f = f.max(dim=-1, keepdim=False)[0]
 
-        coor_q, f_q = self.fps_downsample(coor, f, 128)
+        # Use Learnable Sampling (Gumbel Softmax) instead of FPS
+        coor_q, f_q = self.learnable_sampling(coor, f, 128)
         f = self.get_graph_feature(coor_q, f_q, coor, f)
         f = self.layer4(f)
         f = f.max(dim=-1, keepdim=False)[0]
