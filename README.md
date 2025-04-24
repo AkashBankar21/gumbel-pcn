@@ -147,7 +147,7 @@ bash ./scripts/train.sh <GPUIDS> \
     [--val_freq <int>]
 ```
 ####  Some examples:
-Train a PoinTr model on PCN benchmark with 2 gpus:
+Train a Gumbel - PoinTr model on PCN benchmark with 2 gpus:
 ```
 CUDA_VISIBLE_DEVICES=0,1 bash ./scripts/dist_train.sh 2 13232 \
     --config ./cfgs/PCN_models/PoinTr.yaml \
@@ -160,7 +160,7 @@ CUDA_VISIBLE_DEVICES=0,1 bash ./scripts/dist_train.sh 2 13232 \
     --exp_name example --resume
 ```
 
-Finetune a PoinTr on PCNCars
+Finetune a Gumbel - PoinTr on PCNCars
 ```
 CUDA_VISIBLE_DEVICES=0,1 bash ./scripts/dist_train.sh 2 13232 \
     --config ./cfgs/KITTI_models/PoinTr.yaml \
@@ -168,7 +168,7 @@ CUDA_VISIBLE_DEVICES=0,1 bash ./scripts/dist_train.sh 2 13232 \
     --start_ckpts ./weight.pth
 ```
 
-Train a PoinTr model with a single GPU:
+Train a Gumbel - PoinTr model with a single GPU:
 ```
 bash ./scripts/train.sh 0 \
     --config ./cfgs/KITTI_models/PoinTr.yaml \
