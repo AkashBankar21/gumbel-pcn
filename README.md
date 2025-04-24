@@ -7,7 +7,6 @@ Created By - Akash Bankar, MTP Guide - Prof. Ayan Chaudhury
 
 This repository contains PyTorch implementation for Learnable and Anchor-Based Sampling for 3D Shape Completion
 
-We provide pretrained AdaPoinTr models (coming soon):
 | dataset  | url| performance |
 | --- | --- |  --- |
 | ShapeNet-55 | Tsinghua Cloud / Google Drive / BaiDuYun  | CD = 0.81e-3|
